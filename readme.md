@@ -63,7 +63,7 @@ GROQ_API_KEY=your_api_key_here
 ## Usage
 Run the script and provide a request in natural language:
 ```bash
-python engg.py
+python main.py
 ```
 Example inputs:
 ```bash
