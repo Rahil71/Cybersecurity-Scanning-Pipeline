@@ -1,7 +1,7 @@
 # Cybersecurity Scanning Pipeline
 
 ## Overview
-This project is a **dynamic cybersecurity scanning pipeline** built with **Python and LangChain**, integrating multiple security tools to analyze a target domain based on user input. The execution flow is determined **dynamically by an LLM**, ensuring that only the required tools run as per the user's request.
+This project is a **dynamic cybersecurity scanning pipeline** built with **Python, LangChain and LangGraph**, integrating multiple security tools to analyze a target domain based on user input. The execution flow is determined **dynamically by an LLM**, ensuring that only the required tools run as per the user's request.
 
 ## Features
 - **Automatic Execution Flow:** The LLM determines the necessary tools based on the user's request.
@@ -17,6 +17,7 @@ This project is a **dynamic cybersecurity scanning pipeline** built with **Pytho
 Ensure you have the following installed:
 - Python 3.8+
 - `langchain`
+- `langgraph`
 - `langchain_groq`
 - `python-dotenv`
 - `subprocess` (built-in)
@@ -62,7 +63,7 @@ GROQ_API_KEY=your_api_key_here
 ## Usage
 Run the script and provide a request in natural language:
 ```bash
-python main.py
+python engg.py
 ```
 Example inputs:
 ```bash
@@ -127,14 +128,6 @@ Databases Found: ['acuart', 'information_schema']
 - This tool should **only** be used for ethical penetration testing with proper authorization.
 - Scanning without permission may **violate legal policies**.
 - Consider running scans in a **sandboxed environment**.
-
-## Future Improvements
-- **Add more reconnaissance tools** (e.g., Subfinder, Amass).
-- **Enhance LLM decision-making** for more complex attack scenarios.
-- **Implement parallel execution** for speed optimization.
-
-## License
-This project is released under the **MIT License**. Use responsibly!
 
 ## Acknowledgments
 - **Nmap** for network scanning.

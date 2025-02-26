@@ -314,7 +314,6 @@ def ffuf_check_node(state: ScanState) -> ScanState:
 def build_workflow():
     builder = StateGraph(ScanState)
 
-    # Add all nodes
     builder.add_node("setup", workflow_setup)
     builder.add_node("nmap", nmap_node)
     builder.add_node("gobuster", gobuster_node)
@@ -323,10 +322,8 @@ def build_workflow():
     builder.add_node("sqlmap_check", sqlmap_check_node)
     builder.add_node("ffuf_check", ffuf_check_node)
 
-    # Set entry point
     builder.set_entry_point("setup")
 
-    # Add conditional edges
     builder.add_conditional_edges(
         "setup",
         should_run_nmap,
