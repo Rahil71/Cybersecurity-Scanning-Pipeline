@@ -6,6 +6,7 @@ from langchain_groq import ChatGroq
 from langchain.schema import SystemMessage, HumanMessage
 from dotenv import load_dotenv
 import ast
+from langgraph.graph import StateGraph, END
 
 load_dotenv()
 
@@ -16,8 +17,9 @@ class ScanState(TypedDict):
     open_ports: List[int]
     directories: List[str]
     sqlmap_results: str
+    requested_scans: List[str]
 
-def interpret_user_request(user_input: str) -> List[str]:
+def interpret_user_request(user_input: str) -> tuple:
     prompt = f"""
     You are a cybersecurity expert. A user requested a security scan.
 
@@ -263,25 +265,117 @@ def execute_advanced_sqlmap(target_url, llm_analysis):
                 dump_command = f"sqlmap -u \"{url}\" -D {db} -T {table} --dump --batch"
                 subprocess.run(dump_command, shell=True)
 
+def should_run_nmap(state: ScanState) -> str:
+    return "run_nmap" if "Nmap" in state.get("requested_scans", []) else "end"
+
+def should_run_gobuster(state: ScanState) -> str:
+    if "Gobuster" in state.get("requested_scans", []) and state.get("open_ports"):
+        return "run_gobuster"
+    return "end"
+
+def should_run_ffuf(state: ScanState) -> str:
+    if "FFUF" in state.get("requested_scans", []) and state.get("directories"):
+        return "run_ffuf"
+    return "end"
+
+def should_run_sqlmap(state: ScanState) -> str:
+    return "run_sqlmap" if "SQLMap" in state.get("requested_scans", []) else "end"
+
+def workflow_setup(state: ScanState) -> ScanState:
+    print(f"\n **Target:** {state['target']}")
+    print(f"**Scans Requested:** {', '.join(state['requested_scans'])}\n")
+    return state
+
+def nmap_node(state: ScanState) -> ScanState:
+    state["open_ports"] = nmap_scan(state["target"])
+    return state
+
+def gobuster_node(state: ScanState) -> ScanState:
+    state["directories"] = run_gobuster(state["target"], state["open_ports"])
+    return state
+
+def ffuf_node(state: ScanState) -> ScanState:
+    new_dirs = ffuf_scan(state["target"], state["open_ports"], state["directories"])
+    state["directories"].extend(new_dirs)
+    return state
+
+def sqlmap_node(state: ScanState) -> ScanState:
+    sqlmap_output = run_sqlmap(state["target"])
+    execute_advanced_sqlmap(state["target"], sqlmap_output)
+    state["sqlmap_results"] = sqlmap_output
+    return state
+
+def sqlmap_check_node(state: ScanState) -> ScanState:
+    return state
+
+def ffuf_check_node(state: ScanState) -> ScanState:
+    return state
+
+def build_workflow():
+    builder = StateGraph(ScanState)
+
+    # Add all nodes
+    builder.add_node("setup", workflow_setup)
+    builder.add_node("nmap", nmap_node)
+    builder.add_node("gobuster", gobuster_node)
+    builder.add_node("ffuf", ffuf_node)
+    builder.add_node("sqlmap", sqlmap_node)
+    builder.add_node("sqlmap_check", sqlmap_check_node)
+    builder.add_node("ffuf_check", ffuf_check_node)
+
+    # Set entry point
+    builder.set_entry_point("setup")
+
+    # Add conditional edges
+    builder.add_conditional_edges(
+        "setup",
+        should_run_nmap,
+        {"run_nmap": "nmap", "end": "sqlmap_check"}
+    )
+
+    builder.add_conditional_edges(
+        "nmap",
+        should_run_gobuster,
+        {"run_gobuster": "gobuster", "end": "ffuf_check"}
+    )
+
+    builder.add_conditional_edges(
+        "gobuster",
+        should_run_ffuf,
+        {"run_ffuf": "ffuf", "end": "sqlmap_check"}
+    )
+
+    builder.add_conditional_edges(
+        "ffuf_check",
+        should_run_ffuf,
+        {"run_ffuf": "ffuf", "end": "sqlmap_check"}
+    )
+
+    builder.add_conditional_edges(
+        "sqlmap_check",
+        should_run_sqlmap,
+        {"run_sqlmap": "sqlmap", "end": END}
+    )
+
+    builder.add_conditional_edges(
+        "ffuf",
+        should_run_sqlmap,
+        {"run_sqlmap": "sqlmap", "end": END}
+    )
+
+    return builder.compile()
+
 if __name__ == "__main__":
     user_request = input("Enter your scan request: ")
-
     target, requested_scans = interpret_user_request(user_request)
 
-    print(f"\n **Target:** {target}")
-    print(f"**Scans Requested:** {', '.join(requested_scans)}\n")
+    initial_state = ScanState(
+        target=target,
+        open_ports=[],
+        directories=[],
+        sqlmap_results="",
+        requested_scans=requested_scans
+    )
 
-    state = ScanState(target=target, open_ports=[], directories=[], sqlmap_results="")
-
-    if "Nmap" in requested_scans:
-        state["open_ports"] = nmap_scan(state["target"])
-
-    if "Gobuster" in requested_scans:
-        state["directories"] = run_gobuster(state["target"], state["open_ports"])
-
-    if "FFUF" in requested_scans:
-        state["directories"].extend(ffuf_scan(state["target"], state["open_ports"], state["directories"]))
-
-    if "SQLMap" in requested_scans:
-        sqlmap_output = run_sqlmap(state["target"])
-        execute_advanced_sqlmap(state["target"], sqlmap_output)
+    workflow = build_workflow()
+    workflow.invoke(initial_state)
